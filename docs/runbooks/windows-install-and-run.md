@@ -23,6 +23,17 @@ npm run companion:package:win
 
 This produces an NSIS installer (`.exe`) using Electron Builder.
 
+## Alternative packaging (portable)
+```powershell
+npm run companion:package:portable
+```
+
+If Smart App Control blocks installer execution, use:
+- `dist\win-unpacked\Skillmaster Companion.exe` (internal testing), or
+- signed portable executable.
+
+For production distribution, sign binaries first (see `docs/runbooks/windows-code-signing.md`).
+
 ## Install steps
 1. Open `dist/Skillmaster Companion Setup <version>.exe`.
 2. Complete installer wizard (per-user install by default).

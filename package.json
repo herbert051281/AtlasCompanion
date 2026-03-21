@@ -11,7 +11,8 @@
     "test:task3": "node --import tsx --test tests/task3-queue-model.test.ts",
     "companion:dev": "electron .",
     "companion:build": "node scripts/build-companion-desktop.mjs",
-    "companion:package:win": "npm run companion:build && electron-builder --win nsis"
+    "companion:package:win": "npm run companion:build && electron-builder --win nsis",
+    "companion:package:portable": "npm run companion:build && electron-builder --win portable"
   },
   "dependencies": {
     "pptxgenjs": "^4.0.1",
