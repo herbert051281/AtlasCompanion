@@ -248,6 +248,38 @@ export async function startService(options: StartOptions = {}): Promise<ServiceH
         return;
       }
 
+      // Execute PowerShell window/app operations
+      if (req.method === 'POST' && req.url === '/execute-operation') {
+        if (!requireAuth(req, res)) {
+          return;
+        }
+
+        const body = await readBody(req);
+        const operation = body.operation as string | undefined;
+        const params = (body.params ?? {}) as Record<string, unknown>;
+
+        if (!operation) {
+          sendJson(res, 400, { error: 'missing operation' });
+          return;
+        }
+
+        try {
+          psManager.validate(operation, params);
+        } catch (err) {
+          sendJson(res, 400, { error: (err as Error).message });
+          return;
+        }
+
+        try {
+          const result = await psManager.execute(operation, { ...params, approved: true });
+          logEvent('operation.executed', { operation, params, result: { code: result.code } });
+          sendJson(res, 200, result);
+        } catch (err) {
+          sendJson(res, 500, { error: (err as Error).message });
+        }
+        return;
+      }
+
       if (req.method === 'POST' && req.url === '/control/grant') {
         if (!requireAuth(req, res)) {
           return;
