@@ -48,4 +48,6 @@ contextBridge.exposeInMainWorld('companionApi', {
   approveTask: (id) => postJson(`/tasks/${id}/approve`, {}, true),
   startTask: (id, durationMs = 2500) => postJson(`/tasks/${id}/start`, { durationMs }, true),
   panicStop: () => postJson('/panic-stop', {}, true),
+  grantControl: (ttlMs = 10 * 60 * 1000) => postJson('/control/grant', { ttlMs }, true),
+  controlStatus: () => getJson('/control/status'),
 });

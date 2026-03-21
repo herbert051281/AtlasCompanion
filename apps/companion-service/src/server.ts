@@ -31,6 +31,8 @@ type ExecutionMode = 'safe' | 'controlled_ui';
 const LOCALHOST = '127.0.0.1' as const;
 const policy = samplePolicy as PolicyRule[];
 const DEFAULT_AUTH_TTL_MS = 30 * 60 * 1000;
+const DEFAULT_CONTROL_TTL_MS = 10 * 60 * 1000;
+const MAX_CONTROL_TTL_MS = 30 * 60 * 1000;
 
 function sendJson(res: ServerResponse, status: number, body: unknown) {
   res.writeHead(status, { 'content-type': 'application/json' });
@@ -81,6 +83,8 @@ export async function startService(options: StartOptions = {}): Promise<ServiceH
 
   let panicStopped = false;
   let mode: ExecutionMode = 'safe';
+  let controlGranted = false;
+  let controlExpiresAt: number | null = null;
 
   const logEvent = (type: string, payload: unknown) => {
     const event: AuditEvent = { type, payload, timestamp: Date.now() };
@@ -117,6 +121,18 @@ export async function startService(options: StartOptions = {}): Promise<ServiceH
     }
 
     return true;
+  };
+
+  const currentControlStatus = () => {
+    if (!controlExpiresAt || controlExpiresAt <= Date.now()) {
+      controlGranted = false;
+      controlExpiresAt = null;
+    }
+
+    return {
+      controlGranted,
+      controlExpiresAt,
+    };
   };
 
   const cancelTaskIfPossible = (taskId: string) => {
@@ -194,6 +210,11 @@ export async function startService(options: StartOptions = {}): Promise<ServiceH
         return;
       }
 
+      if (req.method === 'GET' && req.url === '/control/status') {
+        sendJson(res, 200, currentControlStatus());
+        return;
+      }
+
       if (req.method === 'POST' && req.url === '/session/token') {
         sendJson(res, 201, issueToken());
         return;
@@ -211,6 +232,31 @@ export async function startService(options: StartOptions = {}): Promise<ServiceH
           count: ordered.length,
           events: ordered,
         });
+        return;
+      }
+
+      if (req.method === 'POST' && req.url === '/control/grant') {
+        if (!requireAuth(req, res)) {
+          return;
+        }
+
+        const body = await readBody(req);
+        const requestedTtl = body.ttlMs;
+
+        if (requestedTtl !== undefined && (typeof requestedTtl !== 'number' || Number.isNaN(requestedTtl))) {
+          sendJson(res, 400, { error: 'invalid_ttl' });
+          return;
+        }
+
+        const requestedMs = typeof requestedTtl === 'number' ? Math.floor(requestedTtl) : DEFAULT_CONTROL_TTL_MS;
+        const ttlMs = Math.max(1, Math.min(requestedMs, MAX_CONTROL_TTL_MS));
+
+        controlGranted = true;
+        controlExpiresAt = Date.now() + ttlMs;
+        const status = currentControlStatus();
+
+        logEvent('control.granted', { ttlMs, controlExpiresAt: status.controlExpiresAt });
+        sendJson(res, 200, { ...status, ttlMs });
         return;
       }
 

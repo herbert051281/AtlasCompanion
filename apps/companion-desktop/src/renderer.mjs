@@ -5,15 +5,17 @@ async function refresh() {
     throw new Error('companionApi bridge unavailable');
   }
 
-  const [health, status, tasks, logs] = await Promise.all([
+  const [health, status, tasks, logs, control] = await Promise.all([
     window.companionApi.health(),
     window.companionApi.status(),
     window.companionApi.tasks(),
     window.companionApi.logs(),
+    window.companionApi.controlStatus(),
   ]);
 
   $('statusline').textContent = health.ok ? 'Service healthy' : `Health error (${health.status})`;
-  $('service').textContent = `Mode=${status.data.mode} | Panic=${status.data.panicStopped} | Queue=${status.data.queueCount} | Pending=${status.data.pendingApprovalCount} | ${window.companionApi.baseUrl}`;
+  const expiresText = control.data.controlExpiresAt ? new Date(control.data.controlExpiresAt).toLocaleString() : 'n/a';
+  $('service').textContent = `Mode=${status.data.mode} | Panic=${status.data.panicStopped} | Queue=${status.data.queueCount} | Pending=${status.data.pendingApprovalCount} | ControlGranted=${control.data.controlGranted} | ControlExpires=${expiresText} | ${window.companionApi.baseUrl}`;
 
   const taskItems = (tasks.data.tasks ?? []).slice(-8).reverse()
     .map((task) => `<li><strong>${task.action}</strong> <code>${task.state}</code></li>`)
@@ -33,6 +35,11 @@ $('enqueue').addEventListener('click', async () => {
 
 $('panic').addEventListener('click', async () => {
   await window.companionApi.panicStop();
+  await refresh();
+});
+
+$('grant-control').addEventListener('click', async () => {
+  await window.companionApi.grantControl();
   await refresh();
 });
 
