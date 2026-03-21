@@ -42,5 +42,5 @@ test('autohotkey adapter runs approved vetted script', async () => {
   const result = await adapter.execute({ scriptPath, approved: true });
 
   assert.equal(result.code, 0);
-  assert.deepEqual(runs, [scriptPath]);
+  assert.deepEqual(runs, [path.resolve(scriptPath)]);
 });
