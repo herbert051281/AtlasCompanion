@@ -1,6 +1,10 @@
 const $ = (id) => document.getElementById(id);
 
 async function refresh() {
+  if (!window.companionApi) {
+    throw new Error('companionApi bridge unavailable');
+  }
+
   const [health, status, tasks, logs] = await Promise.all([
     window.companionApi.health(),
     window.companionApi.status(),

@@ -66,9 +66,9 @@ function createWindow() {
     height: 760,
     webPreferences: {
       contextIsolation: true,
-      sandbox: true,
+      sandbox: false,
       nodeIntegration: false,
-      preload: path.join(__dirname, 'preload.mjs'),
+      preload: path.join(__dirname, 'preload.cjs'),
       additionalArguments: [`--companion-port=${servicePort}`],
     },
   });
