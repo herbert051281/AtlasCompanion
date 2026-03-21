@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, globalShortcut, net } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
@@ -8,6 +8,57 @@ const __dirname = path.dirname(__filename);
 
 let serviceProc = null;
 let servicePort = null;
+let authToken = null;
+
+async function requestToken(port) {
+  return new Promise((resolve, reject) => {
+    const request = net.request({
+      method: 'POST',
+      protocol: 'http:',
+      hostname: '127.0.0.1',
+      port,
+      path: '/session/token',
+    });
+
+    request.on('response', (response) => {
+      let data = '';
+      response.on('data', (chunk) => {
+        data += chunk;
+      });
+      response.on('end', () => {
+        if (response.statusCode === 201) {
+          resolve(JSON.parse(data).token);
+        } else {
+          reject(new Error(`Failed to get token: ${response.statusCode}`));
+        }
+      });
+    });
+
+    request.on('error', (error) => reject(error));
+    request.setHeader('content-type', 'application/json');
+    request.write('{}');
+    request.end();
+  });
+}
+
+async function triggerPanic(port, token) {
+  return new Promise((resolve) => {
+    const request = net.request({
+      method: 'POST',
+      protocol: 'http:',
+      hostname: '127.0.0.1',
+      port,
+      path: '/internal/hotkey-panic',
+    });
+
+    request.setHeader('Authorization', `Bearer ${token}`);
+    request.on('response', (response) => {
+      resolve(response.statusCode === 200);
+    });
+    request.on('error', () => resolve(false));
+    request.end();
+  });
+}
 
 function startServiceProcess() {
   return new Promise((resolve, reject) => {
@@ -77,7 +128,23 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
-  await startServiceProcess();
+  const port = await startServiceProcess();
+  authToken = await requestToken(port);
+
+  const registered = globalShortcut.register('CommandOrControl+Alt+Pause', async () => {
+    console.warn('Global Kill Switch (Ctrl+Alt+Pause) triggered! Sending panic stop...');
+    const success = await triggerPanic(servicePort, authToken);
+    if (success) {
+      console.log('Panic stop signal delivered.');
+    } else {
+      console.error('Failed to deliver panic stop signal.');
+    }
+  });
+
+  if (!registered) {
+    console.error('Failed to register global shortcut (Ctrl+Alt+Pause).');
+  }
+
   createWindow();
 
   app.on('activate', () => {
@@ -85,6 +152,10 @@ app.whenReady().then(async () => {
       createWindow();
     }
   });
+});
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
 });
 
 app.on('window-all-closed', () => {

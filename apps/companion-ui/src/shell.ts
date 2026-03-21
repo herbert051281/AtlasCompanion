@@ -16,6 +16,9 @@ export type CompanionSnapshot = {
   panicStopped: boolean;
   tasks: UiTask[];
   logs: UiLogEvent[];
+  controlGranted: boolean;
+  controlExpiresAt: number | null;
+  killHotkey: string;
 };
 
 export type DashboardModel = {
@@ -26,6 +29,9 @@ export type DashboardModel = {
   queue: UiTask[];
   pendingApprovals: UiTask[];
   recentLogs: UiLogEvent[];
+  controlGranted: boolean;
+  controlExpiresAt: number | null;
+  killHotkey: string;
 };
 
 export function deriveDashboardModel(snapshot: CompanionSnapshot): DashboardModel {
@@ -40,6 +46,9 @@ export function deriveDashboardModel(snapshot: CompanionSnapshot): DashboardMode
     queue,
     pendingApprovals,
     recentLogs: [...snapshot.logs].sort((a, b) => b.timestamp - a.timestamp).slice(0, 30),
+    controlGranted: snapshot.controlGranted,
+    controlExpiresAt: snapshot.controlExpiresAt,
+    killHotkey: snapshot.killHotkey,
   };
 }
 
@@ -64,15 +73,34 @@ function renderLogs(logs: UiLogEvent[]): string {
 }
 
 export function renderShellHtml(model: DashboardModel): string {
+  const remainingSeconds = model.controlExpiresAt ? Math.max(0, Math.floor((model.controlExpiresAt - Date.now()) / 1000)) : 0;
+  const controlActive = model.controlGranted && remainingSeconds > 0;
+  
   return `<!doctype html>
 <html>
-  <head><meta charset="utf-8" /><title>Skillmaster Companion</title></head>
+  <head>
+    <meta charset="utf-8" />
+    <title>Skillmaster Companion</title>
+    <style>
+      body { font-family: sans-serif; }
+      .control-active-banner {
+        background: #ff4444; color: white; padding: 10px; font-weight: bold; text-align: center;
+        animation: flash 2s infinite; display: ${controlActive ? 'block' : 'none'};
+      }
+      @keyframes flash { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
+      .safety-controls { border: 2px solid #ccc; padding: 10px; margin-bottom: 20px; border-radius: 8px; }
+      #stop-now { background: #cc0000; color: white; border: none; padding: 15px 30px; font-size: 1.2rem; cursor: pointer; border-radius: 4px; font-weight: bold; }
+    </style>
+  </head>
   <body>
+    <div class="control-active-banner">CONTROL ACTIVE - EMERGENCY KILL: ${model.killHotkey}</div>
     <header>
       <h1>Skillmaster Companion</h1>
-      <button id="stop-now" aria-label="stop execution">STOP NOW</button>
-      <p>Mode: ${model.mode}</p>
-      <p>Status: ${model.panicStopped ? 'PANIC STOPPED' : 'ACTIVE'}</p>
+      <div class="safety-controls">
+        <button id="stop-now" aria-label="stop execution">STOP NOW (F12)</button>
+        <p>Mode: <strong>${model.mode}</strong> | Status: <strong>${model.panicStopped ? 'PANIC STOPPED' : 'ACTIVE'}</strong></p>
+        ${controlActive ? `<p>Control Session: <strong>${remainingSeconds}s remaining</strong> <button id="revoke-control">Revoke</button></p>` : '<p>No active control session.</p>'}
+      </div>
     </header>
     <main>
       <section>

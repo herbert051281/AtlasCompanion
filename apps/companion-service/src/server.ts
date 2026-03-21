@@ -125,13 +125,17 @@ export async function startService(options: StartOptions = {}): Promise<ServiceH
 
   const currentControlStatus = () => {
     if (!controlExpiresAt || controlExpiresAt <= Date.now()) {
-      controlGranted = false;
-      controlExpiresAt = null;
+      if (controlGranted) {
+        controlGranted = false;
+        controlExpiresAt = null;
+        logEvent('control.revoked', { reason: 'timeout' });
+      }
     }
 
     return {
       controlGranted,
       controlExpiresAt,
+      killHotkey: 'Ctrl+Alt+Pause',
     };
   };
 
@@ -382,6 +386,29 @@ export async function startService(options: StartOptions = {}): Promise<ServiceH
         }
 
         sendJson(res, 202, { task: queue.get(startMatch[1]) });
+        return;
+      }
+
+      if (req.method === 'POST' && req.url === '/control/revoke') {
+        if (!requireAuth(req, res)) {
+          return;
+        }
+
+        controlGranted = false;
+        controlExpiresAt = null;
+        logEvent('control.revoked', { reason: 'user' });
+        sendJson(res, 200, currentControlStatus());
+        return;
+      }
+
+      if (req.method === 'POST' && req.url === '/internal/hotkey-panic') {
+        if (!requireAuth(req, res)) {
+          return;
+        }
+
+        panicStop();
+        logEvent('panic.hotkey', { hotkey: 'Ctrl+Alt+Pause' });
+        sendJson(res, 200, { status: 'stopped' });
         return;
       }
 
