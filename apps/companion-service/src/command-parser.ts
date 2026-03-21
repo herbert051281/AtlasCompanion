@@ -19,6 +19,35 @@ export type ParseResult = {
 };
 
 /**
+ * App name to executable mapping
+ */
+const APP_NAMES: Record<string, string> = {
+  'notepad': 'notepad.exe',
+  'chrome': 'chrome.exe',
+  'firefox': 'firefox.exe',
+  'edge': 'msedge.exe',
+  'vscode': 'code.exe',
+  'visual studio code': 'code.exe',
+  'vs code': 'code.exe',
+  'slack': 'slack.exe',
+  'discord': 'discord.exe',
+  'explorer': 'explorer.exe',
+  'file explorer': 'explorer.exe',
+  'cmd': 'cmd.exe',
+  'command prompt': 'cmd.exe',
+  'powershell': 'powershell.exe',
+  'terminal': 'wt.exe',
+  'windows terminal': 'wt.exe',
+  'calculator': 'calc.exe',
+  'calc': 'calc.exe',
+  'paint': 'mspaint.exe',
+  'word': 'winword.exe',
+  'excel': 'excel.exe',
+  'outlook': 'outlook.exe',
+  'teams': 'ms-teams.exe',
+};
+
+/**
  * Hotkey mapping from human-readable to AutoHotkey format
  */
 const HOTKEY_MAP: Record<string, string> = {
@@ -81,7 +110,7 @@ const HOTKEY_MAP: Record<string, string> = {
 };
 
 /**
- * Parse a natural language command into structured commands
+ * Parse a natural language command into structured commands (single statement)
  */
 export function parseCommand(text: string): ParseResult {
   const trimmed = text.trim();
@@ -90,6 +119,58 @@ export function parseCommand(text: string): ParseResult {
   }
 
   return parseSingleStatement(trimmed);
+}
+
+/**
+ * Parse a chained command (multiple statements separated by "then", "and", or ",")
+ */
+export function parseChainedCommand(text: string): ParseResult {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return { success: false, error: 'Empty command' };
+  }
+
+  // Split by separators: ", then ", " then ", ", and ", " and ", ", "
+  // Be careful not to split inside coordinates like "500,300"
+  const statements = splitStatements(trimmed);
+
+  if (statements.length === 1) {
+    return parseSingleStatement(statements[0]);
+  }
+
+  const commands: ParsedCommand[] = [];
+  for (const stmt of statements) {
+    const result = parseSingleStatement(stmt);
+    if (!result.success) {
+      return result;
+    }
+    commands.push(...(result.commands || []));
+  }
+
+  return { success: true, commands };
+}
+
+/**
+ * Split text into statements, being careful not to break coordinates
+ */
+function splitStatements(text: string): string[] {
+  // Replace coordinate patterns temporarily
+  const coordPlaceholder = '___COORD___';
+  const coords: string[] = [];
+  let processed = text.replace(/(\d+)\s*,\s*(\d+)/g, (match, x, y) => {
+    coords.push(`${x},${y}`);
+    return `${coordPlaceholder}${coords.length - 1}`;
+  });
+
+  // Split by separators
+  const parts = processed.split(/\s*(?:,\s*then\s+|then\s+|,\s*and\s+|and\s+|,\s*)\s*/i);
+
+  // Restore coordinates
+  return parts.map(part => {
+    return part.replace(new RegExp(`${coordPlaceholder}(\\d+)`, 'g'), (_, idx) => {
+      return coords[parseInt(idx, 10)];
+    });
+  }).filter(s => s.trim().length > 0);
 }
 
 /**
@@ -301,9 +382,172 @@ function parseSingleStatement(text: string): ParseResult {
     };
   }
 
+  // --- App/Window operations ---
+
+  // "open <app>"
+  if (lower.startsWith('open ')) {
+    const appName = lower.slice(5).trim();
+    const appPath = APP_NAMES[appName] || `${appName}.exe`;
+    return {
+      success: true,
+      commands: [
+        {
+          type: 'operation',
+          operation: 'app.launch',
+          params: { appPath },
+        },
+      ],
+    };
+  }
+
+  // "close <window>"
+  if (lower.startsWith('close ')) {
+    const windowTitle = text.slice(6).trim(); // Preserve case for window title
+    return {
+      success: true,
+      commands: [
+        {
+          type: 'operation',
+          operation: 'app.close',
+          params: { windowTitle },
+        },
+      ],
+    };
+  }
+
+  // "focus <window>"
+  if (lower.startsWith('focus ')) {
+    const windowTitle = text.slice(6).trim(); // Preserve case
+    return {
+      success: true,
+      commands: [
+        {
+          type: 'operation',
+          operation: 'window.focus',
+          params: { windowTitle },
+        },
+      ],
+    };
+  }
+
+  // "list windows"
+  if (lower === 'list windows' || lower === 'show windows') {
+    return {
+      success: true,
+      commands: [
+        {
+          type: 'operation',
+          operation: 'window.list',
+          params: {},
+        },
+      ],
+    };
+  }
+
+  // "minimize window" or "minimize"
+  if (lower === 'minimize' || lower === 'minimize window' || lower === 'minimize this window') {
+    return {
+      success: true,
+      commands: [
+        {
+          type: 'operation',
+          operation: 'window.minimize',
+          params: {},
+        },
+      ],
+    };
+  }
+
+  // --- Wait command ---
+
+  // "wait Xs" or "wait X seconds"
+  const waitMatch = lower.match(/^wait\s+(\d+)\s*(?:s|sec|secs|second|seconds)?$/);
+  if (waitMatch) {
+    return {
+      success: true,
+      commands: [
+        {
+          type: 'primitive',
+          action: 'wait',
+          params: { ms: parseInt(waitMatch[1], 10) * 1000 },
+        },
+      ],
+    };
+  }
+
+  // "wait Xms" or "wait X milliseconds"
+  const waitMsMatch = lower.match(/^wait\s+(\d+)\s*(?:ms|milliseconds?)$/);
+  if (waitMsMatch) {
+    return {
+      success: true,
+      commands: [
+        {
+          type: 'primitive',
+          action: 'wait',
+          params: { ms: parseInt(waitMsMatch[1], 10) },
+        },
+      ],
+    };
+  }
+
+  // --- Control commands ---
+
+  // "grant control" or "grant control for X minutes"
+  if (lower === 'grant control' || lower.startsWith('grant control for')) {
+    const match = lower.match(/grant control for (\d+)\s*(min|mins|minute|minutes|hour|hours)?/);
+    let durationMs = 300000; // 5 min default
+    if (match) {
+      const value = parseInt(match[1], 10);
+      const unit = match[2] || 'min';
+      if (unit.startsWith('hour')) {
+        durationMs = value * 3600000;
+      } else {
+        durationMs = value * 60000;
+      }
+    }
+    return {
+      success: true,
+      commands: [
+        {
+          type: 'control',
+          action: 'grant',
+          params: { durationMs },
+        },
+      ],
+    };
+  }
+
+  // "revoke control"
+  if (lower === 'revoke control' || lower === 'stop control') {
+    return {
+      success: true,
+      commands: [
+        {
+          type: 'control',
+          action: 'revoke',
+          params: {},
+        },
+      ],
+    };
+  }
+
+  // "control status"
+  if (lower === 'control status' || lower === 'status') {
+    return {
+      success: true,
+      commands: [
+        {
+          type: 'control',
+          action: 'status',
+          params: {},
+        },
+      ],
+    };
+  }
+
   // --- Fallback ---
   return {
     success: false,
-    error: `I didn't understand "${text}". Try: "move mouse to 500,300", "click at 500,300", "type hello", "press Ctrl+A"`,
+    error: `I didn't understand "${text}". Try: "move mouse to 500,300", "click at 500,300", "type hello", "press Ctrl+A", "open Notepad"`,
   };
 }
