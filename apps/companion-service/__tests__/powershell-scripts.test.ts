@@ -179,3 +179,156 @@ test('Window operations - should handle window not found gracefully', async () =
   assert.equal(response.success, false, 'should report failure in response');
   assert.ok(response.error?.includes('not found'), 'should indicate window not found');
 });
+
+// ===== Task 7: App Launch & Close Tests =====
+
+test('App operations - should launch an app by path', async () => {
+  const executorCalls: Array<{ args: string[] }> = [];
+  
+  const trackingExecutor = async ({ exe, args, timeout }: { exe: string; args: string[]; timeout: number }) => {
+    executorCalls.push({ args });
+    return {
+      stdout: JSON.stringify({ success: true, message: 'Launched notepad.exe', pid: 12345 }),
+      stderr: '',
+    };
+  };
+
+  const manager = createPowerShellManager({
+    scriptsRoot: `${process.cwd()}/apps/companion-service/src/powershell-scripts`,
+    executor: trackingExecutor,
+  });
+
+  const result = await manager.execute('app.launch', {
+    appPath: 'notepad.exe',
+    approved: true,
+  });
+
+  assert.equal(result.code, 0, 'should succeed');
+  
+  const response = JSON.parse(result.stdout);
+  assert.equal(response.success, true, 'should report success');
+  assert.ok(response.pid, 'should return process ID');
+  
+  // Verify correct operation
+  const operationArg = executorCalls[0]?.args.find((a, i, arr) => arr[i - 1] === '-Operation');
+  assert.equal(operationArg, 'app-launch', 'should call app-launch operation');
+});
+
+test('App operations - should launch an app with arguments', async () => {
+  const executorCalls: Array<{ args: string[] }> = [];
+  
+  const trackingExecutor = async ({ exe, args, timeout }: { exe: string; args: string[]; timeout: number }) => {
+    executorCalls.push({ args });
+    return {
+      stdout: JSON.stringify({ success: true, message: 'Launched notepad.exe', pid: 12346 }),
+      stderr: '',
+    };
+  };
+
+  const manager = createPowerShellManager({
+    scriptsRoot: `${process.cwd()}/apps/companion-service/src/powershell-scripts`,
+    executor: trackingExecutor,
+  });
+
+  const result = await manager.execute('app.launch', {
+    appPath: 'notepad.exe',
+    arguments: ['test.txt'],
+    approved: true,
+  });
+
+  assert.equal(result.code, 0, 'should succeed');
+  
+  // Verify arguments were passed
+  const paramsArg = executorCalls[0]?.args.find((a, i, arr) => arr[i - 1] === '-Params');
+  const parsedParams = JSON.parse(paramsArg ?? '{}');
+  assert.equal(parsedParams.appPath, 'notepad.exe', 'should pass appPath');
+  assert.deepEqual(parsedParams.arguments, ['test.txt'], 'should pass arguments');
+});
+
+test('App operations - should validate required parameters for launch', () => {
+  const manager = createPowerShellManager({
+    scriptsRoot: `${process.cwd()}/apps/companion-service/src/powershell-scripts`,
+    executor: mockExecutor,
+  });
+
+  assert.throws(
+    () => manager.validate('app.launch', {}),
+    /missing required parameter: appPath/,
+    'should require appPath parameter'
+  );
+});
+
+test('App operations - should minimize a window', async () => {
+  const trackingExecutor = async () => ({
+    stdout: JSON.stringify({ success: true, message: 'Minimized: Notepad' }),
+    stderr: '',
+  });
+
+  const manager = createPowerShellManager({
+    scriptsRoot: `${process.cwd()}/apps/companion-service/src/powershell-scripts`,
+    executor: trackingExecutor,
+  });
+
+  const result = await manager.execute('window.minimize', {
+    windowTitle: 'Notepad',
+    approved: true,
+  });
+
+  assert.equal(result.code, 0, 'should succeed');
+  const response = JSON.parse(result.stdout);
+  assert.equal(response.success, true, 'should report success');
+});
+
+test('App operations - should close an app by process name', async () => {
+  const executorCalls: Array<{ args: string[] }> = [];
+  
+  const trackingExecutor = async ({ exe, args, timeout }: { exe: string; args: string[]; timeout: number }) => {
+    executorCalls.push({ args });
+    return {
+      stdout: JSON.stringify({ success: true, message: 'Closed notepad', count: 2 }),
+      stderr: '',
+    };
+  };
+
+  const manager = createPowerShellManager({
+    scriptsRoot: `${process.cwd()}/apps/companion-service/src/powershell-scripts`,
+    executor: trackingExecutor,
+  });
+
+  const result = await manager.execute('app.close', {
+    processName: 'notepad',
+    approved: true,
+  });
+
+  assert.equal(result.code, 0, 'should succeed');
+  
+  const response = JSON.parse(result.stdout);
+  assert.equal(response.success, true, 'should report success');
+  assert.equal(response.count, 2, 'should report count of closed processes');
+  
+  // Verify correct operation
+  const operationArg = executorCalls[0]?.args.find((a, i, arr) => arr[i - 1] === '-Operation');
+  assert.equal(operationArg, 'app-close', 'should call app-close operation');
+});
+
+test('App operations - should handle app not found on close', async () => {
+  const notFoundExecutor = async () => ({
+    stdout: JSON.stringify({ success: false, error: "Process 'nonexistent' not found" }),
+    stderr: '',
+  });
+
+  const manager = createPowerShellManager({
+    scriptsRoot: `${process.cwd()}/apps/companion-service/src/powershell-scripts`,
+    executor: notFoundExecutor,
+  });
+
+  const result = await manager.execute('app.close', {
+    processName: 'nonexistent',
+    approved: true,
+  });
+
+  assert.equal(result.code, 0, 'should return code 0 (PowerShell executed)');
+  const response = JSON.parse(result.stdout);
+  assert.equal(response.success, false, 'should report failure');
+  assert.ok(response.error?.includes('not found'), 'should indicate process not found');
+});
