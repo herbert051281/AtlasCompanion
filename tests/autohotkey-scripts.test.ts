@@ -63,3 +63,88 @@ test('AutoHotkey Script Manager - should reject unknown primitives', () => {
     /unknown primitive/i,
   );
 });
+
+// ============================================================
+// Task 2: Mouse primitives integration tests
+// ============================================================
+
+test('Mouse primitives - should move mouse to screen coordinates', async () => {
+  const manager = createAutoHotkeyScriptManager({
+    scriptsRoot,
+    ahkExecutable: 'AutoHotkey64.exe',
+    mockExecution: true,
+  });
+
+  const result = await manager.execute('mouse.move', {
+    x: 512,
+    y: 384,
+    approved: true,
+  });
+  assert.equal(result.code, 0, 'should succeed');
+  assert.ok(result.stdout.includes('mouse.move'), 'should reference mouse.move');
+});
+
+test('Mouse primitives - should click at coordinates', async () => {
+  const manager = createAutoHotkeyScriptManager({
+    scriptsRoot,
+    ahkExecutable: 'AutoHotkey64.exe',
+    mockExecution: true,
+  });
+
+  const result = await manager.execute('mouse.click', {
+    button: 'left',
+    x: 512,
+    y: 384,
+    clickCount: 1,
+    approved: true,
+  });
+  assert.equal(result.code, 0, 'should succeed');
+});
+
+test('Mouse primitives - should double-click', async () => {
+  const manager = createAutoHotkeyScriptManager({
+    scriptsRoot,
+    ahkExecutable: 'AutoHotkey64.exe',
+    mockExecution: true,
+  });
+
+  const result = await manager.execute('mouse.click', {
+    button: 'left',
+    x: 512,
+    y: 384,
+    clickCount: 2,
+    approved: true,
+  });
+  assert.equal(result.code, 0, 'should succeed');
+});
+
+test('Mouse primitives - should validate click button parameter', () => {
+  const manager = createAutoHotkeyScriptManager({
+    scriptsRoot,
+    ahkExecutable: 'AutoHotkey64.exe',
+  });
+
+  // Should throw for missing required 'button' param
+  assert.throws(
+    () => manager.validate('mouse.click', { approved: true }),
+    /missing required parameter: button/i,
+  );
+});
+
+test('Mouse primitives - should handle drag operation', async () => {
+  const manager = createAutoHotkeyScriptManager({
+    scriptsRoot,
+    ahkExecutable: 'AutoHotkey64.exe',
+    mockExecution: true,
+  });
+
+  const result = await manager.execute('mouse.drag', {
+    button: 'left',
+    x1: 100,
+    y1: 100,
+    x2: 500,
+    y2: 500,
+    approved: true,
+  });
+  assert.equal(result.code, 0, 'drag should succeed');
+});
