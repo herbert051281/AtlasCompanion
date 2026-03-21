@@ -148,3 +148,76 @@ test('Mouse primitives - should handle drag operation', async () => {
   });
   assert.equal(result.code, 0, 'drag should succeed');
 });
+
+// ============================================================
+// Task 3: Keyboard primitives integration tests
+// ============================================================
+
+test('Keyboard primitives - should type text', async () => {
+  const manager = createAutoHotkeyScriptManager({
+    scriptsRoot,
+    ahkExecutable: 'AutoHotkey64.exe',
+    mockExecution: true,
+  });
+
+  const result = await manager.execute('keyboard.type', {
+    text: 'hello world',
+    approved: true,
+  });
+  assert.equal(result.code, 0, 'should succeed');
+  assert.ok(result.stdout.includes('keyboard.type'), 'should reference keyboard.type');
+});
+
+test('Keyboard primitives - should send hotkey combos (Ctrl+A)', async () => {
+  const manager = createAutoHotkeyScriptManager({
+    scriptsRoot,
+    ahkExecutable: 'AutoHotkey64.exe',
+    mockExecution: true,
+  });
+
+  const result = await manager.execute('keyboard.hotkey', {
+    hotkey: '^a',
+    approved: true,
+  });
+  assert.equal(result.code, 0, 'should succeed');
+});
+
+test('Keyboard primitives - should send Alt+Tab', async () => {
+  const manager = createAutoHotkeyScriptManager({
+    scriptsRoot,
+    ahkExecutable: 'AutoHotkey64.exe',
+    mockExecution: true,
+  });
+
+  const result = await manager.execute('keyboard.hotkey', {
+    hotkey: '!{Tab}',
+    approved: true,
+  });
+  assert.equal(result.code, 0, 'should succeed');
+});
+
+test('Keyboard primitives - should validate text parameter', () => {
+  const manager = createAutoHotkeyScriptManager({
+    scriptsRoot,
+    ahkExecutable: 'AutoHotkey64.exe',
+  });
+
+  // Should throw for missing required 'text' param
+  assert.throws(
+    () => manager.validate('keyboard.type', { approved: true }),
+    /missing required parameter: text/i,
+  );
+});
+
+test('Keyboard primitives - should validate hotkey parameter', () => {
+  const manager = createAutoHotkeyScriptManager({
+    scriptsRoot,
+    ahkExecutable: 'AutoHotkey64.exe',
+  });
+
+  // Should throw for missing required 'hotkey' param
+  assert.throws(
+    () => manager.validate('keyboard.hotkey', { approved: true }),
+    /missing required parameter: hotkey/i,
+  );
+});
