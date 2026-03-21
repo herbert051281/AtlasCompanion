@@ -1,0 +1,55 @@
+{
+  "name": "skillmaster-companion",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "apps/companion-desktop/src/main.mjs",
+  "scripts": {
+    "test": "node --import tsx --test \"tests/**/*.test.ts\"",
+    "test:task1": "node --import tsx --test tests/task1-scaffold.test.ts",
+    "test:task2": "node --import tsx --test tests/task2-service-bootstrap.test.ts",
+    "test:task3": "node --import tsx --test tests/task3-queue-model.test.ts",
+    "companion:dev": "electron .",
+    "companion:build": "node scripts/build-companion-desktop.mjs",
+    "companion:package:win": "npm run companion:build && electron-builder --win nsis"
+  },
+  "dependencies": {
+    "pptxgenjs": "^4.0.1",
+    "tsx": "^4.20.5"
+  },
+  "devDependencies": {
+    "electron": "^33.3.1",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.9.2"
+  },
+  "build": {
+    "appId": "com.skillmaster.companion",
+    "productName": "Skillmaster Companion",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "apps/companion-desktop/**/*",
+      "apps/companion-service/**/*",
+      "packages/policy-engine/**/*",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}

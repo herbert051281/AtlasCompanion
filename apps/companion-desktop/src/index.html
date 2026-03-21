@@ -1,0 +1,52 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self';" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Skillmaster Companion</title>
+    <style>
+      body { font-family: Segoe UI, sans-serif; margin: 18px; background: #0b1020; color: #e8ebf0; }
+      h1, h2 { margin: 0 0 10px; }
+      .row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+      .card { background: #171f33; border: 1px solid #2a3858; border-radius: 10px; padding: 12px; flex: 1 1 300px; }
+      button { padding: 8px 12px; border: 0; border-radius: 8px; cursor: pointer; }
+      #panic { background: #b31b1b; color: #fff; font-weight: 700; }
+      #enqueue { background: #1d63d8; color: #fff; }
+      ul { margin: 8px 0 0; padding-left: 18px; }
+      code { color: #9ad1ff; }
+      .muted { opacity: .8; font-size: 12px; }
+      #statusline { font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <h1>Skillmaster Companion Desktop</h1>
+    <p id="statusline">Loading...</p>
+
+    <div class="row">
+      <div class="card">
+        <h2>Controls</h2>
+        <button id="enqueue">Queue low-risk task</button>
+        <button id="panic">STOP NOW</button>
+        <p class="muted">Defaults remain: localhost bind, safe mode, token TTL from service.</p>
+      </div>
+      <div class="card">
+        <h2>Service</h2>
+        <p id="service"></p>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="card">
+        <h2>Tasks</h2>
+        <ul id="tasks"></ul>
+      </div>
+      <div class="card">
+        <h2>Recent logs</h2>
+        <ul id="logs"></ul>
+      </div>
+    </div>
+
+    <script type="module" src="./renderer.mjs"></script>
+  </body>
+</html>

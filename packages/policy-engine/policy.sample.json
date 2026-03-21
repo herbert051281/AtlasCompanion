@@ -1,0 +1,23 @@
+[
+  {
+    "action": "read_status",
+    "riskLevel": "low",
+    "allowed": true,
+    "requiresApproval": false,
+    "timeoutMs": 1000
+  },
+  {
+    "action": "ui_click",
+    "riskLevel": "medium",
+    "allowed": true,
+    "requiresApproval": true,
+    "timeoutMs": 5000
+  },
+  {
+    "action": "delete_system32",
+    "riskLevel": "high",
+    "allowed": false,
+    "requiresApproval": false,
+    "timeoutMs": 100
+  }
+]
