@@ -2,6 +2,8 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { TaskQueue } from './task-queue.ts';
 import { evaluatePolicy, type PolicyRule, type RiskLevel } from '../../../packages/policy-engine/src/index.ts';
 import samplePolicy from '../../../packages/policy-engine/policy.sample.json' with { type: 'json' };
+import { createAutoHotkeyScriptManager } from './autohotkey-scripts/index.ts';
+import { createPowerShellManager } from './powershell-scripts/index.ts';
 
 type AuditEvent = {
   type: string;
@@ -18,6 +20,7 @@ type StartOptions = {
   host?: string;
   auditLog?: AuditLog;
   authTtlMs?: number;
+  psExecutor?: (args: { exe: string; args: string[]; timeout: number }) => Promise<{ stdout: string; stderr: string }>;
 };
 
 export type ServiceHandle = {
@@ -80,6 +83,12 @@ export async function startService(options: StartOptions = {}): Promise<ServiceH
   const events: AuditEvent[] = [];
   const authTtlMs = options.authTtlMs ?? DEFAULT_AUTH_TTL_MS;
   const auditLog = options.auditLog;
+
+  // Initialize PowerShell manager for window/app operations
+  const psManager = createPowerShellManager({
+    scriptsRoot: new URL('./powershell-scripts', import.meta.url).pathname,
+    executor: options.psExecutor,
+  });
 
   let panicStopped = false;
   let mode: ExecutionMode = 'safe';
@@ -423,6 +432,49 @@ export async function startService(options: StartOptions = {}): Promise<ServiceH
         return;
       }
 
+      // IRIS TRACK: Execute AutoHotkey primitives (mouse/keyboard)
+      if (req.method === 'POST' && req.url === '/execute-primitive') {
+        const body = await readBody(req);
+        const primitive = body.primitive as string | undefined;
+        const params = (body.params ?? {}) as Record<string, unknown> & { approved?: boolean };
+
+        if (!primitive) {
+          sendJson(res, 400, { error: 'missing primitive' });
+          return;
+        }
+
+        // Check approval flag
+        if (!params.approved) {
+          sendJson(res, 403, { error: 'approval required for primitive execution' });
+          return;
+        }
+
+        // Create script manager with mock mode for non-Windows environments
+        const isWindows = process.platform === 'win32';
+        const scriptsRoot = new URL('./autohotkey-scripts', import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1');
+        const manager = createAutoHotkeyScriptManager({
+          scriptsRoot,
+          ahkExecutable: 'AutoHotkey64.exe',
+          mockExecution: !isWindows,
+        });
+
+        try {
+          manager.validate(primitive, { ...params, approved: true });
+        } catch (err) {
+          sendJson(res, 400, { error: (err as Error).message });
+          return;
+        }
+
+        try {
+          const result = await manager.execute(primitive, { ...params, approved: true });
+          logEvent('primitive.executed', { primitive, params, result });
+          sendJson(res, 200, result);
+        } catch (err) {
+          sendJson(res, 500, { error: (err as Error).message });
+        }
+        return;
+      }
+
       const taskMatch = req.url?.match(/^\/tasks\/([^/]+)$/);
       if (req.method === 'GET' && taskMatch) {
         const task = queue.get(taskMatch[1]);
@@ -470,5 +522,9 @@ export async function startService(options: StartOptions = {}): Promise<ServiceH
     server,
     host: LOCALHOST,
     port: address.port,
+    close: () => server.close(),
   };
 }
+
+// Alias for compatibility with integration tests
+export const startCompanionService = startService;
