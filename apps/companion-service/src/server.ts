@@ -560,3 +560,10 @@ export async function startService(options: StartOptions = {}): Promise<ServiceH
 
 // Alias for compatibility with integration tests
 export const startCompanionService = startService;
+
+// Auto-start when run directly
+if (import.meta.url === `file://${process.argv[1]}`) {
+  const service = await startService({ port: 9999 });
+  console.log(`🚀 Companion Service listening on http://${service.host}:${service.port}`);
+  console.log('Ready for Atlas commands.');
+}
