@@ -6,12 +6,23 @@
  */
 
 import { createServer } from 'node:http';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const PORT = 9999;
 const HOST = '127.0.0.1';
 
 // AutoHotkey path for Windows
 const AUTOHOTKEY_PATH = 'C:\\Program Files\\AutoHotkey\\AutoHotkey64.exe';
+
+// Get script directory
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const SCRIPTS_DIR = join(__dirname, '../scripts');
+
+const execFileAsync = promisify(execFile);
 
 console.log('Starting Atlas Companion Service...');
 
@@ -32,34 +43,50 @@ const server = createServer((req, res) => {
     req.on('end', async () => {
       try {
         const data = JSON.parse(body);
-        console.log(`Executing primitive: ${data.primitive}`, data.params);
+        console.log(`[${new Date().toISOString()}] Executing: ${data.primitive}`, data.params);
         
-        // Execute AutoHotkey script for mouse movement
+        let result = { code: 0, stdout: '', stderr: '' };
+        
+        // Mouse movement
         if (data.primitive === 'mouse.move' && data.params?.x && data.params?.y) {
-          const { execFile } = await import('node:child_process');
-          const ahkScript = `MouseMove(${data.params.x}, ${data.params.y}, 5)`;
-          
-          execFile(AUTOHOTKEY_PATH, ['-Command', ahkScript], (err, stdout, stderr) => {
-            if (err) {
-              console.error(`AHK error: ${err.message}`);
-              res.writeHead(500, { 'content-type': 'application/json' });
-              res.end(JSON.stringify({ code: 1, stdout: '', stderr: err.message }));
-            } else {
-              console.log(`✓ Moved mouse to ${data.params.x},${data.params.y}`);
-              res.writeHead(200, { 'content-type': 'application/json' });
-              res.end(JSON.stringify({ code: 0, stdout: 'ok', stderr: '' }));
-            }
-          });
-          return;
+          try {
+            const args = [String(data.params.x), String(data.params.y)];
+            if (data.params.speed) args.push(String(data.params.speed));
+            
+            await execFileAsync(AUTOHOTKEY_PATH, [join(SCRIPTS_DIR, 'mouse-move.ahk'), ...args], { timeout: 5000 });
+            result.stdout = `Moved mouse to ${data.params.x},${data.params.y}`;
+            console.log(`✓ ${result.stdout}`);
+          } catch (err: any) {
+            result.code = 1;
+            result.stderr = err.message;
+            console.error(`✗ Mouse move failed: ${err.message}`);
+          }
+        }
+        // Mouse click
+        else if (data.primitive === 'mouse.click' && data.params) {
+          try {
+            const x = data.params.x ? String(data.params.x) : '';
+            const y = data.params.y ? String(data.params.y) : '';
+            const button = data.params.button || 'left';
+            const count = data.params.clickCount || 1;
+            
+            const args = [x, y, button, String(count)];
+            await execFileAsync(AUTOHOTKEY_PATH, [join(SCRIPTS_DIR, 'mouse-click.ahk'), ...args], { timeout: 5000 });
+            result.stdout = `Clicked ${button} button at ${x || 'current'},${y || 'current'}`;
+            console.log(`✓ ${result.stdout}`);
+          } catch (err: any) {
+            result.code = 1;
+            result.stderr = err.message;
+            console.error(`✗ Mouse click failed: ${err.message}`);
+          }
+        }
+        // Default fallback
+        else {
+          result.stdout = `Primitive ${data.primitive} not yet implemented`;
         }
         
-        // Default: just echo back success
-        res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ 
-          code: 0, 
-          stdout: `executed ${data.primitive}`,
-          stderr: ''
-        }));
+        res.writeHead(result.code === 0 ? 200 : 500, { 'content-type': 'application/json' });
+        res.end(JSON.stringify(result));
       } catch (err) {
         console.error('JSON parse error:', err);
         res.writeHead(400, { 'content-type': 'application/json' });
