@@ -9,6 +9,7 @@
     "test:task1": "node --import tsx --test tests/task1-scaffold.test.ts",
     "test:task2": "node --import tsx --test tests/task2-service-bootstrap.test.ts",
     "test:task3": "node --import tsx --test tests/task3-queue-model.test.ts",
+    "companion:start": "node --import tsx apps/companion-service/src/server.ts",
     "companion:dev": "electron .",
     "companion:build": "node scripts/build-companion-desktop.mjs",
     "companion:package:win": "npm run companion:build && electron-builder --win nsis",
