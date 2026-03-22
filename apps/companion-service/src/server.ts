@@ -563,7 +563,20 @@ export const startCompanionService = startService;
 
 // Auto-start when run directly
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const service = await startService({ port: 9999 });
-  console.log(`🚀 Companion Service listening on http://${service.host}:${service.port}`);
-  console.log('Ready for Atlas commands.');
+  try {
+    console.log('Starting Companion Service...');
+    const service = await startService({ port: 9999 });
+    console.log(`🚀 Companion Service listening on http://${service.host}:${service.port}`);
+    console.log('Ready for Atlas commands.');
+    
+    // Keep process alive
+    process.on('SIGINT', () => {
+      console.log('Shutting down...');
+      service.close();
+      process.exit(0);
+    });
+  } catch (err) {
+    console.error('Failed to start service:', err);
+    process.exit(1);
+  }
 }
