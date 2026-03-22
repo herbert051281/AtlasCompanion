@@ -89,10 +89,7 @@ server.listen(PORT, HOST, () => {
   console.log('Ready for commands. Press Ctrl+C to stop.');
 });
 
-// Safety check
-setTimeout(() => {
-  console.log('✓ Service is running...');
-}, 1000);
+
 
 process.on('SIGINT', () => {
   console.log('\nShutting down gracefully...');
@@ -102,8 +99,4 @@ process.on('SIGINT', () => {
   });
 });
 
-// Timeout safety
-setTimeout(() => {
-  console.error('⚠️ Service startup took too long. Exiting.');
-  process.exit(1);
-}, 10000);
+// Remove the premature timeout — the server is working fine
