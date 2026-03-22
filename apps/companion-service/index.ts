@@ -6,23 +6,13 @@
  */
 
 import { createServer } from 'node:http';
-import { execFile } from 'node:child_process';
+import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 const PORT = 9999;
 const HOST = '127.0.0.1';
 
-// AutoHotkey path for Windows
-const AUTOHOTKEY_PATH = 'C:\\Program Files\\AutoHotkey\\AutoHotkey64.exe';
-
-// Get script directory
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const SCRIPTS_DIR = join(__dirname, '../scripts');
-
-const execFileAsync = promisify(execFile);
+const execAsync = promisify(exec);
 
 console.log('Starting Atlas Companion Service...');
 
@@ -47,14 +37,14 @@ const server = createServer((req, res) => {
         
         let result = { code: 0, stdout: '', stderr: '' };
         
-        // Mouse movement
+        // Mouse movement using PowerShell
         if (data.primitive === 'mouse.move' && data.params?.x && data.params?.y) {
           try {
-            const args = [String(data.params.x), String(data.params.y)];
-            if (data.params.speed) args.push(String(data.params.speed));
-            
-            await execFileAsync(AUTOHOTKEY_PATH, [join(SCRIPTS_DIR, 'mouse-move.ahk'), ...args], { timeout: 5000 });
-            result.stdout = `Moved mouse to ${data.params.x},${data.params.y}`;
+            const x = data.params.x;
+            const y = data.params.y;
+            const cmd = `Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${x}, ${y})`;
+            await execAsync(`powershell -NoProfile -Command "${cmd}"`, { timeout: 5000 });
+            result.stdout = `Moved mouse to ${x},${y}`;
             console.log(`✓ ${result.stdout}`);
           } catch (err: any) {
             result.code = 1;
@@ -62,17 +52,28 @@ const server = createServer((req, res) => {
             console.error(`✗ Mouse move failed: ${err.message}`);
           }
         }
-        // Mouse click
+        // Mouse click using PowerShell
         else if (data.primitive === 'mouse.click' && data.params) {
           try {
-            const x = data.params.x ? String(data.params.x) : '';
-            const y = data.params.y ? String(data.params.y) : '';
+            const x = data.params.x || 0;
+            const y = data.params.y || 0;
             const button = data.params.button || 'left';
             const count = data.params.clickCount || 1;
             
-            const args = [x, y, button, String(count)];
-            await execFileAsync(AUTOHOTKEY_PATH, [join(SCRIPTS_DIR, 'mouse-click.ahk'), ...args], { timeout: 5000 });
-            result.stdout = `Clicked ${button} button at ${x || 'current'},${y || 'current'}`;
+            // Move to position if provided
+            let cmd = '';
+            if (data.params.x && data.params.y) {
+              cmd += `Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${x}, ${y}); `;
+            }
+            
+            // Click
+            cmd += `Add-Type -AssemblyName System.Windows.Forms; `;
+            for (let i = 0; i < count; i++) {
+              cmd += `[System.Windows.Forms.SendKeys]::SendWait("{${button === 'right' ? 'RBUTTON' : 'LBUTTON'}}"); `;
+            }
+            
+            await execAsync(`powershell -NoProfile -Command "${cmd}"`, { timeout: 5000 });
+            result.stdout = `Clicked ${button} button ${count}x`;
             console.log(`✓ ${result.stdout}`);
           } catch (err: any) {
             result.code = 1;
