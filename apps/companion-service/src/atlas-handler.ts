@@ -99,11 +99,9 @@ export class AtlasHandler {
    */
   private isControlCommand(text: string): boolean {
     return (
-      text.startsWith('grant control') ||
-      text === 'grant' ||
-      text === 'revoke control' ||
-      text === 'revoke' ||
-      text === 'control status' ||
+      text.startsWith('grant') ||
+      text.startsWith('revoke') ||
+      text.includes('control') ||
       text === 'status'
     );
   }
