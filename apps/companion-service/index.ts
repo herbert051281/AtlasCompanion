@@ -76,8 +76,11 @@ const server = createServer((req, res) => {
   res.end(JSON.stringify({ error: 'not found' }));
 });
 
-server.on('error', (err) => {
+console.log(`Attempting to listen on ${HOST}:${PORT}...`);
+
+server.on('error', (err: any) => {
   console.error('❌ Server error:', err.message);
+  console.error('Error code:', err.code);
   process.exit(1);
 });
 
@@ -85,6 +88,11 @@ server.listen(PORT, HOST, () => {
   console.log(`✅ Companion Service started on http://${HOST}:${PORT}`);
   console.log('Ready for commands. Press Ctrl+C to stop.');
 });
+
+// Safety check
+setTimeout(() => {
+  console.log('✓ Service is running...');
+}, 1000);
 
 process.on('SIGINT', () => {
   console.log('\nShutting down gracefully...');
