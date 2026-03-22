@@ -52,7 +52,7 @@ const server = createServer((req, res) => {
             console.error(`✗ Mouse move failed: ${err.message}`);
           }
         }
-        // Mouse click using PowerShell
+        // Mouse click using PowerShell - use mouse_event API for proper clicks
         else if (data.primitive === 'mouse.click' && data.params) {
           try {
             const x = data.params.x || 0;
@@ -61,15 +61,24 @@ const server = createServer((req, res) => {
             const count = data.params.clickCount || 1;
             
             // Move to position if provided
-            let cmd = '';
+            let cmd = `Add-Type -AssemblyName System.Windows.Forms; `;
             if (data.params.x && data.params.y) {
-              cmd += `Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${x}, ${y}); `;
+              cmd += `[System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${x}, ${y}); `;
             }
             
-            // Click
-            cmd += `Add-Type -AssemblyName System.Windows.Forms; `;
+            // Click using mouse_event (proper mouse click, not SendKeys)
+            cmd += `
+              Add-Type -Name WinAPI -Namespace Win32 -MemberDefinition @"
+                [DllImport("user32.dll")]
+                public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint cButtons, uint dwExtraInfo);
+              "@;
+            `;
+            
+            const flags = button === 'right' ? '2' : '1';
+            const flagsUp = button === 'right' ? '8' : '4';
+            
             for (let i = 0; i < count; i++) {
-              cmd += `[System.Windows.Forms.SendKeys]::SendWait("{${button === 'right' ? 'RBUTTON' : 'LBUTTON'}}"); `;
+              cmd += `[Win32.WinAPI]::mouse_event(${flags}, 0, 0, 0, 0); [System.Threading.Thread]::Sleep(50); [Win32.WinAPI]::mouse_event(${flagsUp}, 0, 0, 0, 0); `;
             }
             
             await execAsync(`powershell -NoProfile -Command "${cmd}"`, { timeout: 5000 });
