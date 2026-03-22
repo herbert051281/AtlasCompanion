@@ -101,17 +101,36 @@ const server = createServer((req, res) => {
   if (req.url === '/execute-operation' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => { body += chunk; });
-    req.on('end', () => {
+    req.on('end', async () => {
       try {
         const data = JSON.parse(body);
-        console.log(`Executing operation: ${data.operation}`);
+        console.log(`[${new Date().toISOString()}] Executing operation: ${data.operation}`, data.params);
         
-        res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ 
-          code: 0,
-          stdout: `executed ${data.operation}`,
-          stderr: ''
-        }));
+        let result = { code: 0, stdout: '', stderr: '' };
+
+        // App launch using PowerShell
+        if (data.operation === 'app.launch' && data.params?.appPath) {
+          try {
+            const appPath = data.params.appPath;
+            const args = data.params.arguments ? ` "${data.params.arguments.join('" "')}"` : '';
+            const cmd = `Start-Process "${appPath}"${args}`;
+            
+            await execAsync(`powershell -NoProfile -Command "${cmd}"`, { timeout: 5000 });
+            result.stdout = `Launched ${appPath}`;
+            console.log(`✓ ${result.stdout}`);
+          } catch (err: any) {
+            result.code = 1;
+            result.stderr = err.message;
+            console.error(`✗ App launch failed: ${err.message}`);
+          }
+        }
+        // Default fallback
+        else {
+          result.stdout = `Operation ${data.operation} not yet implemented`;
+        }
+
+        res.writeHead(result.code === 0 ? 200 : 500, { 'content-type': 'application/json' });
+        res.end(JSON.stringify(result));
       } catch (err) {
         console.error('JSON parse error:', err);
         res.writeHead(400, { 'content-type': 'application/json' });
