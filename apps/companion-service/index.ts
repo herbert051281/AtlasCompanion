@@ -10,6 +10,9 @@ import { createServer } from 'node:http';
 const PORT = 9999;
 const HOST = '127.0.0.1';
 
+// AutoHotkey path for Windows
+const AUTOHOTKEY_PATH = 'C:\\Program Files\\AutoHotkey\\AutoHotkey64.exe';
+
 console.log('Starting Atlas Companion Service...');
 
 const server = createServer((req, res) => {
@@ -26,12 +29,31 @@ const server = createServer((req, res) => {
   if (req.url === '/execute-primitive' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => { body += chunk; });
-    req.on('end', () => {
+    req.on('end', async () => {
       try {
         const data = JSON.parse(body);
-        console.log(`Executing primitive: ${data.primitive}`);
+        console.log(`Executing primitive: ${data.primitive}`, data.params);
         
-        // For now, just echo back success
+        // Execute AutoHotkey script for mouse movement
+        if (data.primitive === 'mouse.move' && data.params?.x && data.params?.y) {
+          const { execFile } = await import('node:child_process');
+          const ahkScript = `MouseMove(${data.params.x}, ${data.params.y}, 5)`;
+          
+          execFile(AUTOHOTKEY_PATH, ['-Command', ahkScript], (err, stdout, stderr) => {
+            if (err) {
+              console.error(`AHK error: ${err.message}`);
+              res.writeHead(500, { 'content-type': 'application/json' });
+              res.end(JSON.stringify({ code: 1, stdout: '', stderr: err.message }));
+            } else {
+              console.log(`✓ Moved mouse to ${data.params.x},${data.params.y}`);
+              res.writeHead(200, { 'content-type': 'application/json' });
+              res.end(JSON.stringify({ code: 0, stdout: 'ok', stderr: '' }));
+            }
+          });
+          return;
+        }
+        
+        // Default: just echo back success
         res.writeHead(200, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ 
           code: 0, 
