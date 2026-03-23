@@ -3,7 +3,11 @@
  * Parses user intent and vision analysis to generate click/type commands
  */
 
-import { ScreenshotAnalysis, findElementsByDescription, getClickPosition, UIElement } from './vision-analyzer.ts';
+import { ScreenshotAnalysis as _ScreenshotAnalysis, findElementsByDescription, getClickPosition, UIElement as _UIElement } from './vision-analyzer.ts';
+
+// Re-export for tests
+export type ScreenshotAnalysis = _ScreenshotAnalysis;
+export type UIElement = _UIElement;
 
 export interface Decision {
   action: 'click' | 'type' | 'wait' | 'screenshot' | 'none';
@@ -12,6 +16,133 @@ export interface Decision {
   duration?: number; // milliseconds for wait
   reason: string;
   confidence: number; // 0-100
+}
+
+// UserIntent interface for tests
+export interface UserIntent {
+  action: 'search' | 'play' | 'search_and_play' | 'open' | 'click' | 'type';
+  target: string;
+}
+
+// ActionCommand interface for tests
+export interface ActionCommand {
+  primitive: 'mouse.click' | 'mouse.move' | 'keyboard.type' | 'wait' | 'error';
+  params: Record<string, any>;
+}
+
+/**
+ * Parse natural language intent into structured UserIntent
+ */
+export function parseIntent(text: string): UserIntent {
+  const textLower = text.toLowerCase();
+  
+  // Check for compound intent (search and play) - use original text for target
+  if (textLower.includes('search') && textLower.includes('play')) {
+    const match = text.match(/search\s+(?:for\s+)?([^,\.;]+?)(?:\s+and|\s*$)/i);
+    return {
+      action: 'search_and_play',
+      target: match ? match[1].trim() : '',
+    };
+  }
+  
+  // Check for search intent - use original text for target
+  if (textLower.includes('search')) {
+    const match = text.match(/search\s+(?:for\s+)?([^,\.;]+)/i);
+    return {
+      action: 'search',
+      target: match ? match[1].trim() : '',
+    };
+  }
+  
+  // Check for play intent - use original text for target
+  if (textLower.includes('play')) {
+    const match = text.match(/play\s+([^,\.;]+)/i);
+    return {
+      action: 'play',
+      target: match ? match[1].trim() : '',
+    };
+  }
+  
+  // Check for open intent - use original text for target
+  if (textLower.includes('open')) {
+    const match = text.match(/open\s+([^,\.;]+)/i);
+    return {
+      action: 'open',
+      target: match ? match[1].trim() : '',
+    };
+  }
+  
+  return { action: 'click', target: text };
+}
+
+/**
+ * Decision Engine class for generating commands based on intent and screen analysis
+ */
+export class DecisionEngine {
+  /**
+   * Generate action commands based on user intent and screen analysis
+   */
+  generateCommands(intent: UserIntent, analysis: ScreenshotAnalysis): ActionCommand[] {
+    const commands: ActionCommand[] = [];
+    
+    if (intent.action === 'search') {
+      // Find search box
+      const searchElement = this.findElement(analysis, 'search');
+      
+      if (searchElement) {
+        // Click search box
+        commands.push({
+          primitive: 'mouse.click',
+          params: {
+            x: searchElement.location.x,
+            y: searchElement.location.y,
+            button: 'left',
+          },
+        });
+        
+        // Wait for focus
+        commands.push({
+          primitive: 'wait',
+          params: { ms: 500 },
+        });
+        
+        // Type search query
+        commands.push({
+          primitive: 'keyboard.type',
+          params: { text: intent.target },
+        });
+      }
+    } else if (intent.action === 'play') {
+      // Find play button or playlist item
+      const playElement = this.findElement(analysis, 'play') || 
+                         this.findElement(analysis, intent.target);
+      
+      if (playElement) {
+        commands.push({
+          primitive: 'mouse.click',
+          params: {
+            x: playElement.location.x,
+            y: playElement.location.y,
+            button: 'left',
+          },
+        });
+      }
+    }
+    
+    return commands;
+  }
+  
+  /**
+   * Find an element in the analysis matching a description
+   */
+  findElement(analysis: ScreenshotAnalysis, description: string): UIElement | undefined {
+    const descLower = description.toLowerCase();
+    
+    return analysis.elements.find(el => {
+      const labelLower = el.label.toLowerCase();
+      return labelLower.includes(descLower) || descLower.includes(labelLower);
+    });
+  }
 }
 
 /**

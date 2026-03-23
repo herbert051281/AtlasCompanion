@@ -287,6 +287,50 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  // Workflow execute endpoint (POST /workflow/execute)
+  // This is the main entry point for vision-driven automation
+  if (req.url === '/workflow/execute' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const data = JSON.parse(body);
+        
+        if (!data.userIntent) {
+          res.writeHead(400, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ 
+            success: false, 
+            error: 'userIntent is required',
+            message: 'Missing required field: userIntent'
+          }));
+          return;
+        }
+
+        console.log(`[${new Date().toISOString()}] Workflow execute: "${data.userIntent}" (max ${data.maxIterations || 10} iterations)`);
+        
+        // Import dynamically to avoid circular deps at startup
+        const { handleWorkflowRequest } = await import('../../src/workflow-endpoint.ts');
+        
+        const result = await handleWorkflowRequest({
+          userIntent: data.userIntent,
+          maxIterations: data.maxIterations,
+        });
+        
+        res.writeHead(result.success ? 200 : 500, { 'content-type': 'application/json' });
+        res.end(JSON.stringify(result));
+      } catch (err: any) {
+        console.error(`[${new Date().toISOString()}] Workflow error: ${err.message}`);
+        res.writeHead(500, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ 
+          success: false, 
+          error: err.message,
+          message: 'Workflow execution failed'
+        }));
+      }
+    });
+    return;
+  }
+
   // 404
   res.writeHead(404, { 'content-type': 'application/json' });
   res.end(JSON.stringify({ error: 'not found' }));
