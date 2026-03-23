@@ -8,6 +8,8 @@
 import { createServer } from 'node:http';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
+import { handleScreenshot } from './src/screenshot-handler';
+import { handleScreenshotRequest } from './src/screenshot-request-handler';
 
 const PORT = 9999;
 const HOST = '127.0.0.1';
@@ -16,13 +18,47 @@ const execAsync = promisify(exec);
 
 console.log('Starting Atlas Companion Service...');
 
-const server = createServer((req, res) => {
+const server = createServer(async (req, res) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
 
   // Health check
   if (req.url === '/' && req.method === 'GET') {
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ status: 'ok', message: 'Atlas Companion Service running' }));
+    return;
+  }
+
+  // Screenshot capture endpoint
+  if (req.url === '/screenshot' && req.method === 'GET') {
+    try {
+      const result = await handleScreenshot();
+      res.writeHead(result.success ? 200 : 500, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(result));
+    } catch (err: any) {
+      res.writeHead(500, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: err.message, timestamp: new Date().toISOString() }));
+    }
+    return;
+  }
+
+  // Screenshot request endpoint (POST)
+  if (req.url === '/request-screenshot' && req.method === 'POST') {
+    let body = '';
+    req.on('data', (chunk: Buffer) => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        let options = {};
+        if (body) {
+          try { options = JSON.parse(body); } catch (e) {}
+        }
+        const result = await handleScreenshotRequest(options);
+        res.writeHead(result.success ? 200 : 500, { 'content-type': 'application/json' });
+        res.end(JSON.stringify(result));
+      } catch (err: any) {
+        res.writeHead(500, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: err.message, timestamp: new Date().toISOString() }));
+      }
+    });
     return;
   }
 
