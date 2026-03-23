@@ -8,8 +8,8 @@
 import { createServer } from 'node:http';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
-import { handleScreenshot } from './src/screenshot-handler.ts';
-import { handleScreenshotRequest } from './src/screenshot-request-handler.ts';
+import { handleScreenshot } from '../../../src/screenshot-handler.ts';
+import { handleScreenshotRequest } from '../../../src/screenshot-request-handler.ts';
 
 const PORT = 9999;
 const HOST = '127.0.0.1';

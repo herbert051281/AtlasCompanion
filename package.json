@@ -16,6 +16,7 @@
     "companion:package:portable": "npm run companion:build && electron-builder --win portable"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.80.0",
     "pptxgenjs": "^4.0.1",
     "tsx": "^4.20.5"
   },
