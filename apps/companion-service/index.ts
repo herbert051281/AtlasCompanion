@@ -252,6 +252,41 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  // Analyze screenshot with vision (POST)
+  if (req.url === '/analyze-screenshot' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const data = JSON.parse(body);
+        const userIntent = data.userIntent || 'Search for Sade and play';
+        
+        console.log(`[${new Date().toISOString()}] Analyzing with intent: ${userIntent}`);
+        
+        // For now, return a placeholder
+        // In production, this would call Claude vision API
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({
+          success: true,
+          message: 'Vision analysis endpoint ready',
+          intent: userIntent,
+          recommendedActions: [
+            { action: 'move_mouse_to_search_box' },
+            { action: 'click' },
+            { action: 'type_search_query', text: 'Sade' },
+            { action: 'wait', duration: 2000 },
+            { action: 'click_first_result' },
+            { action: 'click_play_button' }
+          ]
+        }));
+      } catch (err: any) {
+        res.writeHead(400, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: 'invalid json' }));
+      }
+    });
+    return;
+  }
+
   // 404
   res.writeHead(404, { 'content-type': 'application/json' });
   res.end(JSON.stringify({ error: 'not found' }));
