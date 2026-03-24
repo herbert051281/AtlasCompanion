@@ -1,19 +1,17 @@
 /**
  * Workflow Executor
- * Loops through iterations until goal is reached or max iterations hit
- * 
- * Based on Anthropic Computer Use pattern
+ * Runs the vision-driven automation loop:
+ * Screenshot → Analyze → Execute → Repeat until goal reached
  */
 
-import { runSingleIteration, IterationResult } from './workflow-loop.ts';
+import { analyzeScreenshot, ScreenshotAnalysis, RecommendedAction } from './claude-vision-analyzer.ts';
 
-export interface LogEntry {
+export interface IterationResult {
   iteration: number;
-  action: string;
-  app?: string;
-  target?: string;
-  goalReached: boolean;
-  timestamp: string;
+  screenshotPath?: string;
+  analysis?: ScreenshotAnalysis;
+  actionExecuted?: RecommendedAction;
+  success: boolean;
   error?: string;
 }
 
@@ -21,136 +19,205 @@ export interface WorkflowResult {
   success: boolean;
   iterations: number;
   message: string;
-  log: LogEntry[];
-  totalTime: number;
-  finalApp?: string;
+  log: IterationResult[];
+  totalTimeMs: number;
 }
 
-interface ExecutorOptions {
-  testMode?: boolean;
-  maxIterations?: number;
-  delayMs?: number;
-  simulateGoalReachedAt?: number;
-  simulateFailureAt?: number;
-  screenshotEndpoint?: string;
-  executeEndpoint?: string;
-}
-
+// Helper to sleep
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
- * Execute a workflow with multiple iterations until goal is reached
- * @param userIntent What the user wants to accomplish
- * @param options Execution options including maxIterations
- * @returns WorkflowResult with success status, iteration count, and log
+ * Execute a single iteration: Screenshot → Analyze → Execute
  */
-export async function executeWorkflow(
+export async function runSingleIteration(
   userIntent: string,
-  options: ExecutorOptions = {}
-): Promise<WorkflowResult> {
-  const maxIterations = options.maxIterations ?? 10;
-  const delayMs = options.delayMs ?? (options.testMode ? 0 : 800);
-  const startTime = Date.now();
-  
-  const log: LogEntry[] = [];
-  let finalApp: string | undefined;
+  iteration: number,
+  serviceUrl: string = 'http://127.0.0.1:9999'
+): Promise<IterationResult> {
+  console.log(`\n📸 Iteration ${iteration}: Taking screenshot...`);
 
-  for (let i = 1; i <= maxIterations; i++) {
-    console.log(`\n📸 Iteration ${i}/${maxIterations}`);
-    
-    // Check if we should simulate goal reached (test mode)
-    const simulateGoalReached = options.testMode && 
-      options.simulateGoalReachedAt !== undefined && 
-      i >= options.simulateGoalReachedAt;
-    
-    // Check if we should simulate failure (test mode)
-    const simulateFailure = options.testMode &&
-      options.simulateFailureAt !== undefined &&
-      i >= options.simulateFailureAt;
+  try {
+    // 1. Take screenshot
+    const screenshotResponse = await fetch(`${serviceUrl}/screenshot`);
+    const screenshotData = await screenshotResponse.json();
 
-    // Run single iteration (with test overrides if needed)
-    let result: IterationResult;
-    
-    if (options.testMode) {
-      result = await runSingleIteration(userIntent, {
-        testMode: true,
-        screenshotEndpoint: options.screenshotEndpoint,
-        executeEndpoint: options.executeEndpoint,
-      });
-      
-      // Override goalReached for test simulation
-      if (simulateGoalReached) {
-        result.goalReached = true;
-      }
-      if (simulateFailure) {
-        result.success = false;
-        result.error = 'Simulated failure';
-      }
-    } else {
-      result = await runSingleIteration(userIntent, {
-        screenshotEndpoint: options.screenshotEndpoint,
-        executeEndpoint: options.executeEndpoint,
-      });
-    }
-
-    // Log this iteration
-    const logEntry: LogEntry = {
-      iteration: i,
-      action: result.action?.type ?? 'unknown',
-      app: result.app,
-      target: result.action?.target,
-      goalReached: result.goalReached,
-      timestamp: new Date().toISOString(),
-      error: result.error,
-    };
-    log.push(logEntry);
-
-    // Track final app
-    if (result.app) {
-      finalApp = result.app;
-    }
-
-    // Log to console
-    console.log(`   App: ${result.app ?? 'unknown'}`);
-    console.log(`   Action: ${result.action?.type ?? 'none'} → ${result.action?.target ?? 'N/A'}`);
-    
-    if (result.error) {
-      console.log(`   ⚠️ Error: ${result.error}`);
-    }
-
-    // Check if goal reached
-    if (result.goalReached) {
-      console.log(`\n✅ Goal reached in ${i} iteration(s)!`);
+    if (!screenshotData.success) {
       return {
-        success: true,
-        iterations: i,
-        message: `Task completed successfully in ${i} iteration(s)`,
-        log,
-        totalTime: Date.now() - startTime,
-        finalApp,
+        iteration,
+        success: false,
+        error: `Screenshot failed: ${screenshotData.error}`,
       };
     }
 
-    // Check if iteration failed completely
-    if (!result.success) {
-      console.log(`\n⚠️ Iteration ${i} failed: ${result.error}`);
-      // Continue trying unless it's a critical failure
+    const screenshotPath = screenshotData.screenshotPath;
+    console.log(`   Screenshot: ${screenshotPath}`);
+
+    // 2. Analyze with Claude
+    console.log(`🔍 Analyzing with Claude Sonnet...`);
+    const analysis = await analyzeScreenshot(screenshotPath, userIntent);
+
+    if (!analysis.success) {
+      return {
+        iteration,
+        screenshotPath,
+        success: false,
+        error: `Analysis failed: ${analysis.error}`,
+      };
     }
 
-    // Wait before next iteration (skip in test mode for speed)
-    if (i < maxIterations && delayMs > 0) {
-      await sleep(delayMs);
+    console.log(`   App: ${analysis.currentApp}`);
+    console.log(`   Elements found: ${analysis.elements.length}`);
+    console.log(`   Recommended: ${analysis.recommendedAction.type} → ${analysis.recommendedAction.target || analysis.recommendedAction.app || 'N/A'}`);
+    console.log(`   Reason: ${analysis.recommendedAction.reason}`);
+    console.log(`   Goal reached: ${analysis.goalReached}`);
+
+    // 3. Execute action (if not goal reached)
+    if (!analysis.goalReached && analysis.recommendedAction.type !== 'none') {
+      console.log(`⚡ Executing: ${analysis.recommendedAction.type}...`);
+      
+      const actionResult = await executeAction(analysis.recommendedAction, serviceUrl);
+      
+      if (!actionResult.success) {
+        console.log(`   ⚠️ Action warning: ${actionResult.error}`);
+      } else {
+        console.log(`   ✓ Action completed`);
+      }
     }
+
+    return {
+      iteration,
+      screenshotPath,
+      analysis,
+      actionExecuted: analysis.recommendedAction,
+      success: true,
+    };
+  } catch (error: any) {
+    return {
+      iteration,
+      success: false,
+      error: error.message || 'Unknown error',
+    };
+  }
+}
+
+/**
+ * Execute an action via the companion service
+ */
+async function executeAction(
+  action: RecommendedAction,
+  serviceUrl: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    let endpoint: string;
+    let body: any;
+
+    switch (action.type) {
+      case 'click':
+        endpoint = '/execute-primitive';
+        body = {
+          primitive: 'mouse.click',
+          params: {
+            x: action.coordinates?.[0] || 0,
+            y: action.coordinates?.[1] || 0,
+            button: 'left',
+          },
+        };
+        break;
+
+      case 'type':
+        endpoint = '/execute-primitive';
+        body = {
+          primitive: 'keyboard.type',
+          params: { text: action.text || '' },
+        };
+        break;
+
+      case 'wait':
+        endpoint = '/execute-primitive';
+        body = {
+          primitive: 'wait',
+          params: { duration: action.duration || 1000 },
+        };
+        break;
+
+      case 'launch_app':
+        endpoint = '/execute-operation';
+        body = {
+          operation: 'app.launch',
+          params: { appPath: action.app || '' },
+        };
+        break;
+
+      case 'none':
+        return { success: true };
+
+      default:
+        return { success: false, error: `Unknown action type: ${action.type}` };
+    }
+
+    const response = await fetch(`${serviceUrl}${endpoint}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    const result = await response.json();
+    return { success: result.code === 0 || result.success, error: result.stderr || result.error };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Execute the full workflow loop
+ * @param userIntent What the user wants to accomplish
+ * @param maxIterations Maximum iterations before giving up (default 10)
+ * @param serviceUrl Companion service URL
+ */
+export async function executeWorkflow(
+  userIntent: string,
+  maxIterations: number = 10,
+  serviceUrl: string = 'http://127.0.0.1:9999'
+): Promise<WorkflowResult> {
+  const startTime = Date.now();
+  const log: IterationResult[] = [];
+
+  console.log(`\n🚀 Starting workflow: "${userIntent}"`);
+  console.log(`   Max iterations: ${maxIterations}`);
+  console.log(`   Service: ${serviceUrl}`);
+
+  for (let i = 1; i <= maxIterations; i++) {
+    const result = await runSingleIteration(userIntent, i, serviceUrl);
+    log.push(result);
+
+    if (!result.success) {
+      console.log(`\n❌ Iteration ${i} failed: ${result.error}`);
+      continue; // Try again
+    }
+
+    // Check if goal reached
+    if (result.analysis?.goalReached) {
+      console.log(`\n🎉 Goal reached in ${i} iteration(s)!`);
+      return {
+        success: true,
+        iterations: i,
+        message: `Task completed: ${userIntent}`,
+        log,
+        totalTimeMs: Date.now() - startTime,
+      };
+    }
+
+    // Wait for UI to update before next iteration
+    console.log(`   ⏳ Waiting 1s for UI update...`);
+    await sleep(1000);
   }
 
-  // Max iterations reached
   console.log(`\n⚠️ Max iterations (${maxIterations}) reached without completing goal`);
   return {
     success: false,
     iterations: maxIterations,
-    message: `Max iterations (${maxIterations}) reached. The workflow did not complete.`,
+    message: 'Max iterations reached without completing goal',
     log,
-    totalTime: Date.now() - startTime,
-    finalApp,
+    totalTimeMs: Date.now() - startTime,
   };
 }
